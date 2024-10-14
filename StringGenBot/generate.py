@@ -32,24 +32,24 @@ from telethon.errors import (
 
 import config
 
-ask_ques = "**☞︎︎︎ ᴄʜᴏᴏsᴇ ᴏɴᴇ ᴛʜᴀᴛ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ɢᴇɴᴇʀᴀᴛᴇ sᴇssɪᴏɴ 𖤍 ✔️ **"
+ask_ques = "**☞︎︎︎ Choose one that you want to generate a session:**"
 buttons_ques = [
     [
-        InlineKeyboardButton("▪️ᴘʏʀᴏɢʀᴀᴍ▪️", callback_data="pyrogram"),
-        InlineKeyboardButton("▪️ᴘʏʀᴏɢʀᴀᴍ ᴠ2▪️", callback_data="pyrogram"),
+        InlineKeyboardButton("▪️Pyrogram▪️", callback_data="pyrogram"),
+        InlineKeyboardButton("▪️Pyrogram V2▪️", callback_data="pyrogram_v2"),
     ],
     [
-        InlineKeyboardButton("🔺ᴛᴇʟᴇᴛʜᴏɴ🔺", callback_data="telethon"),
+        InlineKeyboardButton("🔺Telethon🔺", callback_data="telethon"),
     ],
     [
-        InlineKeyboardButton("🔸ᴘʏʀᴏɢʀᴀᴍ ʙᴏᴛ🔸", callback_data="pyrogram_bot"),
-        InlineKeyboardButton("🔹ᴛᴇʟᴇᴛʜᴏɴ ʙᴏᴛ🔹", callback_data="telethon_bot"),
+        InlineKeyboardButton("🔸Pyrogram Bot🔸", callback_data="pyrogram_bot"),
+        InlineKeyboardButton("🔹Telethon Bot🔹", callback_data="telethon_bot"),
     ],
 ]
 
 gen_button = [
     [
-        InlineKeyboardButton(text="🔹ɢᴇɴʀᴀᴛᴇ sᴇssɪᴏɴ🔹", callback_data="generate")
+        InlineKeyboardButton(text="🔹Generate Session🔹", callback_data="generate")
     ]
 ]
 
@@ -57,68 +57,67 @@ gen_button = [
 async def main(_, msg):
     await msg.reply(ask_ques, reply_markup=InlineKeyboardMarkup(buttons_ques))
 
-
 async def generate_session(bot: Client, msg: Message, telethon=False, old_pyro: bool = False, is_bot: bool = False):
-    try:
-        if telethon:
-            ty = "𝖳𝖤𝖫𝖤𝖳𝖧𝖮𝖭"
-        else:
-            ty = "𝖯𝖸𝖱𝖮𝖦𝖱𝖠𝖬"
-            if not old_pyro:
-                ty += " 𝖵2"
-        if is_bot:
-            ty += " 𝖡𝖮𝖳"
+    session_type = "Telethon" if telethon else "Pyrogram"
+    if is_bot:
+        session_type += " Bot"
+    
+    await msg.reply(f"Starting {session_type} session generation...")
 
-        await msg.reply(f"» ᴛʀʏɪɴɢ ᴛᴏ sᴛᴀʀᴛ **{ty}** sᴇssɪᴏɴ ɢᴇɴᴇʀᴀᴛᴏʀ...")
-        user_id = msg.chat.id
-        api_id_msg = await bot.ask(user_id, "ᴘʟᴇᴀsᴇ sᴇɴᴅ ʏᴏᴜʀ **ᴀᴘɪ_ɪᴅ** ᴛᴏ ᴘʀᴏᴄᴇᴇᴅ.", filters=filters.text)
+    user_id = msg.chat.id
+    api_id_msg = await bot.ask(user_id, "Please send your API_ID to proceed.\n\nClick on /skip to use default Bot API.", filters=filters.text)
+    if await cancelled(api_id_msg):
+        return
 
-        if await cancelled(api_id_msg):
+    if api_id_msg.text == "/skip":
+        api_id = config.API_ID
+        api_hash = config.API_HASH
+    else:
+        try:
+            api_id = int(api_id_msg.text)
+        except ValueError:
+            await api_id_msg.reply("API_ID must be an integer. Restart the generation process.", reply_markup=InlineKeyboardMarkup(gen_button))
             return
 
-        api_id = int(api_id_msg.text) if api_id_msg.text != "/skip" else config.API_ID
-        api_hash = config.API_HASH if api_id_msg.text == "/skip" else (await bot.ask(user_id, "☞︎︎︎ ɴᴏᴡ ᴘʟᴇᴀsᴇ sᴇɴᴅ ʏᴏᴜʀ **ᴀᴘɪ_ʜᴀsʜ** ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ.", filters=filters.text)).text
-
-        phone_number_msg = await bot.ask(user_id, "Please enter your phone number or bot token.", filters=filters.text)
-        if await cancelled(phone_number_msg):
+        api_hash_msg = await bot.ask(user_id, "Now send your API_HASH to continue.", filters=filters.text)
+        if await cancelled(api_hash_msg):
             return
+        api_hash = api_hash_msg.text
 
-        phone_number = phone_number_msg.text
-        client = await initiate_client(telethon, is_bot, old_pyro, api_id, api_hash, phone_number)
+    prompt_message = "Please enter your phone number (Example: +91 95xxxxxxXX)" if not is_bot else "Please send your Bot Token (Example: 12345:ABCDE)"
+    phone_number_msg = await bot.ask(user_id, prompt_message, filters=filters.text)
+    if await cancelled(phone_number_msg):
+        return
+    phone_number = phone_number_msg.text
 
-        await handle_authentication(bot, client, msg, user_id, telethon, is_bot, phone_number)
-        await send_session_info(bot, client, msg, telethon, ty)
+    await msg.reply("Attempting to login...")
 
-    except Exception as e:
-        await msg.reply(f"An error occurred during the session generation: {str(e)}. Please try again.", reply_markup=InlineKeyboardMarkup(gen_button))
-
-
-async def initiate_client(telethon, is_bot, old_pyro, api_id, api_hash, phone_number):
-    if telethon and is_bot:
-        return TelegramClient(StringSession(), api_id, api_hash)
-    elif telethon:
-        return TelegramClient(StringSession(), api_id, api_hash)
+    # Configure the client object based on conditions
+    if telethon:
+        client = TelegramClient(StringSession(), api_id, api_hash)
     elif is_bot:
-        return Client(name="bot", api_id=api_id, api_hash=api_hash, bot_token=phone_number, in_memory=True)
-    elif old_pyro:
-        return Client1(":memory:", api_id=api_id, api_hash=api_hash)
+        client = Client(name="bot", api_id=api_id, api_hash=api_hash, bot_token=phone_number, in_memory=True)
     else:
-        return Client(name="user", api_id=api_id, api_hash=api_hash, in_memory=True)
+        client = Client(name="user", api_id=api_id, api_hash=api_hash, in_memory=True)
 
+    await client.connect()
 
-async def handle_authentication(bot, client, msg, user_id, telethon, is_bot, phone_number):
-    if not is_bot:
-        code = await client.send_code(phone_number) if not telethon else await client.send_code_request(phone_number)
-        phone_code_msg = await bot.ask(user_id, "Send the OTP received.", filters=filters.text)
-        phone_code = phone_code_msg.text.replace(" ", "")
-        await client.sign_in(phone_number, code.phone_code_hash, phone_code)
+    # Bot sessions are not saved to the user's direct messages
+    if is_bot:
+        session_string = await client.export_session_string()
+        await bot.send_message(msg.chat.id, f"Here is your bot session string:\n\n`{session_string}`")
     else:
-        await client.sign_in_bot(phone_number)
+        session_string = await client.export_session_string()
+        try:
+            await client.send_message("me", f"Your session string is:\n\n`{session_string}`\n\nPlease do not share it.")
+        except Exception as e:
+            await msg.reply("Session generated successfully but could not save to direct messages.", reply_markup=InlineKeyboardMarkup(gen_button))
 
-
-async def send_session_info(bot, client, msg, telethon, ty):
-    string_session = client.session.save() if telethon else await client.export_session_string()
-    text = f"Your {ty} session has been generated successfully."
-    await client.send_message("me", text) if not is_bot else bot.send_message(msg.chat.id, text)
     await client.disconnect()
-    await bot.send_message(msg.chat.id, f"Session successfully generated. Check your saved messages.")
+    await bot.send_message(msg.chat.id, "Session generation complete. Please check your saved messages.")
+
+async def cancelled(msg):
+    if "/cancel" in msg.text or msg.text.startswith("/"):
+        await msg.reply("Process cancelled.", reply_markup=InlineKeyboardMarkup(gen_button))
+        return True
+    return False
